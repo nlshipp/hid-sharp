@@ -93,15 +93,15 @@ namespace HIDInterface
 
         [DllImport("hid.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
         private static extern bool HidD_GetFeature(
-           IntPtr hDevice,
-           IntPtr hReportBuffer,
-           uint ReportBufferLength);
+           SafeFileHandle hDevice,
+           byte[] hReportBuffer,
+           Int32 ReportBufferLength);
 
         [DllImport("hid.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
         private static extern bool HidD_SetFeature(
-           IntPtr hDevice,
-           IntPtr ReportBuffer,
-           uint ReportBufferLength);
+           SafeFileHandle hDevice,
+           byte[] ReportBuffer,
+           Int32 ReportBufferLength);
 
         [DllImport("hid.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
         private static extern bool HidD_GetProductString(
@@ -210,6 +210,7 @@ namespace HIDInterface
         public bool deviceConnected { get; set; }
         private SafeFileHandle handle_read;
         private SafeFileHandle handle_write;
+        private SafeFileHandle handle_feature;
         private FileStream FS_read;
         private FileStream FS_write;
         private HIDP_CAPS capabilities;
@@ -376,6 +377,9 @@ namespace HIDInterface
             handle_write = CreateFile(devicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                 IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
 
+            handle_feature = CreateFile(devicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+
             //get capabilites - use getPreParsedData, and getCaps
             //store the reportlengths
             IntPtr ptrToPreParsedData = new IntPtr();
@@ -410,6 +414,7 @@ namespace HIDInterface
             productInfo.devicePath = devicePath;
             productInfo.manufacturer = manfString;
             productInfo.product = productName;
+            if (String.IsNullOrEmpty(SN)) { SN = "1"; }
             productInfo.serialNumber = Convert.ToInt32(SN);
             productInfo.PID = (ushort)attributes.ProductID;
             productInfo.VID = (ushort)attributes.VendorID;
@@ -418,8 +423,15 @@ namespace HIDInterface
             productInfo.OUT_reportByteLength = (int)capabilities.OutputReportByteLength;
 
             //use a filestream object to bring this stuff into .NET
-            FS_read = new FileStream(handle_read, FileAccess.ReadWrite, capabilities.OutputReportByteLength, false);
-            FS_write = new FileStream(handle_write, FileAccess.ReadWrite, capabilities.InputReportByteLength, false);
+            if (capabilities.OutputReportByteLength > 0)
+            {
+                FS_read = new FileStream(handle_read, FileAccess.ReadWrite, capabilities.OutputReportByteLength, false);
+            }
+
+            if (capabilities.InputReportByteLength > 0)
+            {
+                FS_write = new FileStream(handle_write, FileAccess.ReadWrite, capabilities.InputReportByteLength, false);
+            }
 
             this.useAsyncReads = useAsyncReads;
             if (useAsyncReads)
@@ -455,6 +467,20 @@ namespace HIDInterface
                 FS_write.Write(packet, 0, packet.Length);
             else
                 throw new Exception("Filestream unable to write");
+        }
+
+        public void writeFeature(byte[] data)
+        {
+            if (data.Length > capabilities.FeatureReportByteLength)
+                throw new Exception("Output report must not exceed " + (capabilities.OutputReportByteLength - 1).ToString() + " bytes");
+
+            //uint numBytesWritten = 0;
+            byte[] packet = new byte[capabilities.FeatureReportByteLength];
+            Array.Copy(data, 0, packet, 1, data.Length);            //start at 1, as the first byte must be zero for HID report
+            packet[0] = 0;
+
+            if (!HidD_SetFeature(handle_feature, packet, packet.Length))
+                throw new Exception("Filestream unable to set feature");
         }
 
         //This read function will be used with asychronous operation, called by the constructor if async reads are used
@@ -494,6 +520,29 @@ namespace HIDInterface
             byte[] readBuf = new byte[capabilities.InputReportByteLength];
             FS_read.Read(readBuf, 0, readBuf.Length);
             return readBuf;
+        }
+
+        /// <summary>
+        /// This read function is for normal synchronous reads
+        /// </summary>
+        /// <returns></returns>
+        public byte[] readFeature()
+        {
+            if (useAsyncReads == true)
+                throw new Exception("A synchonous read cannot be executed when operating in async mode");
+
+            byte[] buffer = new byte[capabilities.FeatureReportByteLength];
+            buffer[0] = 0;
+
+            if (HidD_GetFeature(handle_feature, buffer, buffer.Length))
+            {
+                byte[] packet = new byte[capabilities.FeatureReportByteLength - 1];
+                Array.Copy(buffer, 1, packet, 0, packet.Length);            //start at 1, as the first byte must be zero for HID report
+                
+                return packet;
+            }
+
+            throw new Exception("Unable to read feature");
         }
         #endregion
 

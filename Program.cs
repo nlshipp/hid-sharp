@@ -25,8 +25,19 @@ namespace HID_Demo
             HID_demo demo = new HID_demo();
             
             //call one or other of these methods to demonstrate each type of operation - sync and async
-            demo.startAsyncOperation();             
-            //demo.useSynchronousOperation();
+            //demo.startAsyncOperation();
+
+            if (args.Length == 1)
+            {
+                if (String.Compare("on", args[0], true) == 0)
+                {
+                    demo.useSynchronousOperation(true);
+                }
+                else if (String.Compare("off", args[0], true) == 0)
+                {
+                    demo.useSynchronousOperation(false);
+                }
+            }
         }
     }
 
@@ -35,14 +46,25 @@ namespace HID_Demo
 
         // Apologies for the repeated code, however i feel it provides a better demonstration
         // of the functionality of this code.
-        public void useSynchronousOperation()
+        public void useSynchronousOperation(bool on)
         {
             //Get the details of all connected USB HID devices
             HIDDevice.interfaceDetails[] devices = HIDDevice.getConnectedDevices();
+            int selectedDeviceIndex;
 
-            //Arbitrarily select one of the devices which we found in the previous step
-            //record the details of this device to be used in the class constructor
-            int selectedDeviceIndex = 0;
+            for (selectedDeviceIndex = 0; selectedDeviceIndex < devices.Length; selectedDeviceIndex++)
+            {
+                if (devices[selectedDeviceIndex].VID == 0x16c0 && devices[selectedDeviceIndex].PID == 0x5df)
+                {
+                    break;
+                }
+            }
+
+            if (selectedDeviceIndex == devices.Length)
+            {
+                return;
+            }
+
             ushort VID = devices[selectedDeviceIndex].VID;
             ushort PID = devices[selectedDeviceIndex].PID;
             int SN = devices[selectedDeviceIndex].serialNumber;
@@ -58,12 +80,28 @@ namespace HID_Demo
 
             //Write some data to the device (the write method throws an exception if the data is longer than the report length
             //specified by the device, this length can be found in the HIDDevice.interfaceDetails struct)
-            byte[] writeData = { 0x00, 0x01, 0x02, 0x03, 0x04 };
-            device.write(writeData);    //Its that easy!!
+//            byte[] writeData = { 0x00, 0x01, 0x02, 0x03, 0x04 };
+//            device.write(writeData);    //Its that easy!!
 
             //Read some data synchronously from the device. This method blocks the calling thread until the data
             //is returned. This takes 1-20ms for most HID devices
-            byte[] readData = device.read();    //again, that easy!
+  //          byte[] readData = device.read();    //again, that easy!
+
+            byte[] featureData = device.readFeature();    //again, that easy!
+
+            byte[] featureReport = new byte[8];
+            if (on)
+            {
+                featureReport[0] = 0xFF;
+                featureReport[1] = 1;
+            }
+            else
+            {
+                featureReport[0] = 0xFD;
+                featureReport[1] = 1;
+            }
+
+            device.writeFeature(featureReport);
 
             //close the device to release all handles etc
             device.close();
