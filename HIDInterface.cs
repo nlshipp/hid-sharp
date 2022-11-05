@@ -414,7 +414,7 @@ namespace HIDInterface
             productInfo.devicePath = devicePath;
             productInfo.manufacturer = manfString;
             productInfo.product = productName;
-            if (String.IsNullOrEmpty(SN)) { SN = "1"; }
+            if (String.IsNullOrEmpty(SN) || !stringIsInteger(SN)) { SN = "1"; }
             productInfo.serialNumber = Convert.ToInt32(SN);
             productInfo.PID = (ushort)attributes.ProductID;
             productInfo.VID = (ushort)attributes.VendorID;
@@ -538,7 +538,7 @@ namespace HIDInterface
             {
                 byte[] packet = new byte[capabilities.FeatureReportByteLength - 1];
                 Array.Copy(buffer, 1, packet, 0, packet.Length);            //start at 1, as the first byte must be zero for HID report
-                
+
                 return packet;
             }
 
